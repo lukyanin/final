@@ -1,5 +1,7 @@
 #include <iostream>
+#include <vector>
 #include <unistd.h>
+#include "WebServer.h"
 
 using namespace std;
 
@@ -8,15 +10,26 @@ void display_usage() {
     exit(0);
 }
 
+string get_cwd() {
+    std::vector<char> path;
+    for(int s = 100; s < 1000; s *= 2) {
+        path.resize(s);
+        if(getcwd(&path[0], s))
+            return string(&path[0]);
+        else if (errno != ERANGE)
+            break;
+    }
+    return string();
+}
+
 int main(int argc, char * const argv[]) {
 
     // /home/box/final/final -h <ip> -p <port> -d <directory>
-    string ip = "127.0.0.1";
+    string ip = "0.0.0.0";
     int port = 80;
-    string dir;
+    string dir = get_cwd();
     int opt;
-    static const char *optString = "h:p:d:";
-    while( opt = getopt( argc, argv, optString ), opt != -1 ) {
+    while(opt = getopt( argc, argv, "h:p:d:"), opt != -1) {
         switch( opt ) {
             case 'h':
                 ip = optarg;
@@ -27,17 +40,16 @@ int main(int argc, char * const argv[]) {
             case 'd':
                 dir = optarg;
                 break;
-/*            case '?':
-                display_usage();
-                break;
-            default:
-                cerr << "Unknown option" << endl;
-                break;*/
         }
     }
-    cout << "pre-final" << endl;
     cout << "ip: " << ip << endl;
     cout << "port: " << port << endl;
     cout << "dir: " << dir << endl;
+
+//    chdir(dir.c_str());
+    WebServer server;
+//    server.PrintFile("/home/lvv/c++course/final/index.htm");
+ //   server.PrintFile("index.htm");
+    server.Run(ip, port, dir);
     return 0;
 }
