@@ -5,6 +5,15 @@
 #include "HttpResponse.h"
 #include <string>
 
+/*
+mime types
+text/plain.txt
+image/x-icon .ico
+image/jpeg.jpeg, .jpg
+image/png.png
+text/html.html
+*/
+
 HttpResponse::HttpResponse(const std::string &version, int code, const char *reason,
                            const char *content_type, FILE * f) {
 
