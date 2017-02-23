@@ -202,8 +202,9 @@ void WebServer::OnRequest(int fd, const std::string& request)
 
     if(r.GetMethod() == HttpRequest::Method::GET) {
         std::string uri = r.GetUri();
+        std::cout << "Client wants '" << r.GetUri() << "'" << std::endl;
         std::string filename = GetUriFilename(uri);
-        std::cout << "Client wants '" << r.GetUri() << "' that is '" + filename + "' " << std::endl;
+        std::cout << "That is      '" + filename + "' " << std::endl;
         OnGetRequest(fd, r.GetVersion(), filename);
     }
     else {
@@ -214,7 +215,7 @@ void WebServer::OnRequest(int fd, const std::string& request)
 std::string WebServer::GetUriFilename(const std::string &uri)
 {
     std::vector<std::string> path;
-    ssize_t pos;
+    ssize_t pos = 0;
     std::string next;
     while(next = Utils::Tokenize(uri, pos, "/\\"), !next.empty()) {
         if(next == "." || next == "~")

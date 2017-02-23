@@ -4,6 +4,7 @@
 
 #include "HttpRequest.h"
 #include "Utils.h"
+// #include <iostream>
 
 using namespace std;
 //GET / HTTP/1.1
@@ -19,6 +20,7 @@ HttpRequest::HttpRequest(const std::string& req)
 {
     ssize_t pos = 0, lpos = 0;
     string line = Utils::GetLine(req, pos);
+    //cout << "request " << line << endl;
 
     method = Utils::Tokenize(line, lpos, " ");
     uri = Utils::Tokenize(line, lpos, " ");
@@ -34,10 +36,12 @@ HttpRequest::HttpRequest(const std::string& req)
 
     while(line = Utils::GetLine(req, pos), !line.empty()) {
         auto dp = line.find(':');
+    	//cout << "line='" << line << "', dp=" << dp << endl;
         if(dp == string::npos)
             continue;
         headers[line.substr(0, dp)] = Utils::Strip(line.substr(dp + 1));
     }
+    // cout << "Request prepared" << endl;
 }
 
 std::string HttpRequest::GetHeader(const std::string& key) const {
