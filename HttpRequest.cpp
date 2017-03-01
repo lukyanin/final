@@ -4,7 +4,7 @@
 
 #include "HttpRequest.h"
 #include "Utils.h"
-// #include <iostream>
+#include <iostream>
 
 using namespace std;
 //GET / HTTP/1.1
@@ -20,7 +20,7 @@ HttpRequest::HttpRequest(const std::string& req)
 {
     ssize_t pos = 0, lpos = 0;
     string line = Utils::GetLine(req, pos);
-    //cout << "request " << line << endl;
+    cout << "request " << line << endl;
 
     method = Utils::Tokenize(line, lpos, " ");
     uri = Utils::Tokenize(line, lpos, " ");
