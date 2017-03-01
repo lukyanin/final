@@ -5,11 +5,6 @@
 
 using namespace std;
 
-void display_usage() {
-    cout << "usage: final -h <ip> -p <port> -d <directory>";
-    exit(0);
-}
-
 string get_cwd() {
     std::vector<char> path;
     for(int s = 100; s < 1000; s *= 2) {
@@ -42,9 +37,9 @@ int main(int argc, char * const argv[]) {
                 break;
         }
     }
-    cout << "ip: " << ip << endl;
-    cout << "port: " << port << endl;
-    cout << "dir: " << dir << endl;
+    //cout << "ip: " << ip << endl;
+    //cout << "port: " << port << endl;
+    //cout << "dir: " << dir << endl;
 
 //    chdir(dir.c_str());
     WebServer server;

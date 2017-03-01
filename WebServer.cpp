@@ -13,28 +13,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/epoll.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <sstream>
+#include <algorithm>
+#include <thread>
 
 
 #define MAX_EVENTS 32
-
-void WebServer::PrintFile(const char *filename) {
-    int fd = open(filename, O_RDONLY);
-    if(fd < 0) {
-        std::cerr << "Can't open " << filename << std::endl;
-        return;
-    }
-    char bfr[2000];
-    std::cout << filename << std::endl;
-    std::cout << "\n------" << std::endl;
-    while(true) {
-        int rd = read(fd, bfr, 2000);
-        write(STDOUT_FILENO, bfr, rd);
-        if(rd < 2000)
-            break;
-    }
-    close(fd);
-    std::cout << "\n------" << std::endl;
-}
 
 bool WebServer::Initialize() {
     if(!InitMasterSocket())
@@ -61,6 +47,13 @@ void WebServer::Run(const std::string& ip_address, int port_n, const std::string
         return;
     stopped = false;
 
+    int work_threads_count = std::thread::hardware_concurrency();
+    if(!work_threads_count)
+        work_threads_count = 1;
+    std::vector<std::thread> thread_pool;
+    for(int i = 0; i < work_threads_count; i++)
+        thread_pool.emplace_back(&WebServer::WoringThread, this);
+
     // main server loop
     while(!stopped) {
         epoll_event Events[MAX_EVENTS];
@@ -76,8 +69,41 @@ void WebServer::Run(const std::string& ip_address, int port_n, const std::string
         }
 
     }
+
+    for(int i = 0; i < work_threads_count; i++) {
+        std::unique_lock<std::mutex> lock(tx_queue);
+        condition_queue.notify_one();
+    }
+
+    for(auto &th : thread_pool)
+        th.join();
     Finalize();
 }
+
+void WebServer::WoringThread()
+{
+    while(!stopped) {
+        Request rq;
+        rq.fd = 0;
+        {
+            std::unique_lock<std::mutex> lock(tx_queue);
+            condition_queue.wait(lock, [this] { return stopped || !req_queue.empty(); });
+            if (!req_queue.empty()) {
+                rq = req_queue.front();
+                req_queue.pop();
+            }
+        }
+        if (rq.fd)
+            OnRequest(rq.fd, rq.raw_request);
+    }
+}
+
+void WebServer::PushRequest(int fd, std::string&& request) {
+    std::unique_lock<std::mutex> lock(tx_queue);
+    req_queue.push({fd, std::move(request) });
+    condition_queue.notify_one();
+}
+
 
 void WebServer::OnNewConnection()
 {
@@ -99,21 +125,25 @@ void WebServer::OnNewConnection()
     }
     std::string client_name = std::string(ipstr) + ":" + std::to_string(port);
 
-    std::cout << "connection " << ss << " from " << client_name << " accepted" << std::endl;
+    //std::cout << "connection " << ss << " from " << client_name << " accepted" << std::endl;
     SetNonblock(ss);
     //clients.insert(ss);
     AddToEpoll(ss);
 }
 
-void WebServer::OnReceive(int fd)
-{
-    /*
-    std::vector<char> req;
+static bool IsFullRequest(const std::string &req) {
+    // reuest is full if it has "\r\n\r\n"
+    return req.find("\r\n\r\n") != std::string::npos;
+}
+
+void WebServer::OnReceive(int fd) {
+    std::string req;
     auto itFound = partial_requests.find(fd);
     if(itFound != partial_requests.end()) {
         req = std::move(itFound->second);
         partial_requests.erase(itFound);
-    }*/
+    }
+
     char buffer[1025];
 //    while(true) {
         ssize_t r = recv(fd, buffer, 1024, MSG_NOSIGNAL);
@@ -122,10 +152,11 @@ void WebServer::OnReceive(int fd)
             //break;
         }
         else if (r > 0) {
-      //      req.insert(req.end(), buffer, buffer+ r);
-            std::string request(buffer, buffer+ r);
-            OnRequest(fd, request);
-            //buffer[r] = '\0';
+            req.insert(req.end(), buffer, buffer+ r);
+            if(IsFullRequest(req))
+                PushRequest(fd, std::move(req));
+            else
+                partial_requests[fd] = req;
             //std::cout << "recevied <<<" << buffer << ">>>" << std::endl;
         }
  //   }
@@ -136,7 +167,7 @@ void WebServer::OnConnectionClosed(int fd)
     shutdown(fd, SHUT_RDWR);
     close(fd);
     partial_requests.erase(fd);
-    std::cout << "connection closed\n" << std::endl;
+    //std::cout << "connection " << fd << " closed" << std::endl;
 }
 
 void WebServer::Finalize()
@@ -188,12 +219,15 @@ bool WebServer::InitMasterSocket()
     return true;
 }
 
-void WebServer::AddToEpoll(int fd)
-{
+void WebServer::AddToEpoll(int fd) {
     epoll_event Event;
     Event.data.fd = fd;
     Event.events = EPOLLIN;
     epoll_ctl(epoll_instance, EPOLL_CTL_ADD, fd, &Event);
+}
+
+void WebServer::RemoveFromEpoll(int fd) {
+    epoll_ctl(epoll_instance, EPOLL_CTL_DEL, fd, nullptr);
 }
 
 void WebServer::OnRequest(int fd, const std::string& request)
@@ -202,9 +236,9 @@ void WebServer::OnRequest(int fd, const std::string& request)
 
     if(r.GetMethod() == HttpRequest::Method::GET) {
         std::string uri = r.GetUri();
-        std::cout << "Client wants '" << r.GetUri() << "'" << std::endl;
+        //std::cout << "Client wants '" << r.GetUri() << "'" << std::endl;
         std::string filename = GetUriFilename(uri);
-        std::cout << "That is      '" + filename + "' " << std::endl;
+        //std::cout << "That is      '" + filename + "' " << std::endl;
         OnGetRequest(fd, r.GetVersion(), filename);
     }
     else {
@@ -235,21 +269,76 @@ std::string WebServer::GetUriFilename(const std::string &uri)
     return fullpath;
 }
 
+std::string GetDirListHtml(DIR* dir, const std::string &dirname, const std::string &fulldirname) {
+    std::stringstream text;
+    text << "<html><head><title>List of /";
+    text << dirname << "</title></head><body><H1>List of /" << dirname << "</H1>";
+
+    text << "<ul>";
+    while (dirent * ent = readdir(dir)) {
+        if (ent->d_name[0] == '.')
+            continue;
+        std::string file_name = ent->d_name;
+        std::string full_file_name = fulldirname + "/" + file_name;
+
+        struct stat st;
+        if (stat(full_file_name.c_str(), &st) == -1)
+            continue;
+
+        if (st.st_mode & S_IFDIR)  // is directory
+            file_name += "/";
+
+        text << "<li><a href=\"" << file_name.c_str() << "\">" << file_name.c_str() << "</a></li>";
+    }
+    text << "</ul></body></html>";
+    return text.str();
+}
+
+const char * GetContentType(const std::string &filename) {
+    std::string ext = Utils::GetFileExtension(filename);
+    if (!ext.empty())
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    if (ext == "txt")
+        return "text/plain";
+    if (ext == "htm" || ext == "html")
+        return "text/html";
+    if (ext == "ico")
+        return "image/x-icon";
+    if (ext == "jpg" || ext == "jpeg")
+        return "image/jpeg";
+    if (ext == "png")
+        return "image/jpeg";
+    return nullptr;
+}
+
+static std::string notFound = "<html><head><title>Not found</title></head><body><H1>:(</H1></body></html>";
+
 void WebServer::OnGetRequest(int fd, const std::string& version, const std::string& filename) {
 
     static std::string sVersion = "HTTP/1.0";
 
     HttpResponse resp;
 
-    FILE * f = fopen(filename.c_str(), "rb");
-
-    if (f < 0) {
-        resp = HttpResponse(sVersion, 404, "Not found");
+    FILE * f = nullptr;
+    struct stat st;
+    if (stat(filename.c_str(), &st) == -1) {
+        resp = HttpResponse(sVersion, 404, "Not found", nullptr, nullptr, &notFound);
+    }
+    else if (st.st_mode & S_IFDIR) {
+        DIR* dir = opendir(filename.c_str());
+        std::string dirlist = GetDirListHtml(dir, filename.substr(work_dir.size()), filename);
+        resp = HttpResponse(sVersion, 200, "OK", "text/html", nullptr, &dirlist);
+        closedir(dir);
     }
     else {
-        resp = HttpResponse(sVersion, 200, "OK", "text/html", f);
+        f = fopen(filename.c_str(), "rb");
+        resp = HttpResponse(sVersion, 200, "OK", GetContentType(filename), f);
     }
+    resp.Send(fd);
     if(f)
         fclose(f);
-    send(fd, resp.data(), resp.size(), MSG_NOSIGNAL);
+
+//    shutdown(fd, SHUT_RDWR);
+    RemoveFromEpoll(fd);
+    OnConnectionClosed(fd);
 }
