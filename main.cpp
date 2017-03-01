@@ -41,7 +41,22 @@ int main(int argc, char * const argv[]) {
     //cout << "port: " << port << endl;
     //cout << "dir: " << dir << endl;
 
-//    chdir(dir.c_str());
+    // make daemon
+    pid_t pid = fork();
+    if(pid == -1) {
+        cerr << "failed to fork" << endl;
+        exit(1);
+    }
+    if(pid != 0) {
+        exit(0); // ok, it is parent, we have done daemon
+    }
+
+    chdir("/");
+    setsid(); // create new session
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+
     WebServer server;
 //    server.PrintFile("/home/lvv/c++course/final/index.htm");
  //   server.PrintFile("index.htm");
