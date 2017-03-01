@@ -20,9 +20,9 @@ string get_cwd() {
 int main(int argc, char * const argv[]) {
 
     // /home/box/final/final -h <ip> -p <port> -d <directory>
-    string ip = "0.0.0.0";
-    int port = 80;
-    string dir = get_cwd();
+    string ip;
+    int port = -1;
+    string dir;
     int opt;
     while(opt = getopt( argc, argv, "h:p:d:"), opt != -1) {
         switch( opt ) {
@@ -36,6 +36,10 @@ int main(int argc, char * const argv[]) {
                 dir = optarg;
                 break;
         }
+    }
+    if(ip.empty() || port == -1 || dir.empty()) {
+        cerr << "usage: /home/box/final/final -h <ip> -p <port> -d <directory>" << endl;
+        exit(1);
     }
     //cout << "ip: " << ip << endl;
     //cout << "port: " << port << endl;
