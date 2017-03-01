@@ -16,14 +16,41 @@ using namespace std;
 //Connection: keep-alive
 //        Upgrade-Insecure-Requests: 1
 
+static unsigned char Hex(char c) {
+    if(c >= '0' && c <= '9')
+        return c - '0';
+    if(c >= 'A' && c <= 'Z')
+        return c - 'A' + 10;
+    if(c >= 'a' && c <= 'z')
+        return c - 'a' + 10;
+    return 0;
+}
+static void RemoveEscape(string& s) {
+    while(true) {
+        auto p = s.find('%');
+        if(p == string::npos)
+            return;
+        if(p < s.size() - 2) {
+            s[p] = (Hex(s[p +1 ]) << 4) | Hex(s[p + 2]);
+            s.erase(p + 1, 2);
+        }
+        else
+            s.erase(p, s.size() - p);
+    }
+}
+
 HttpRequest::HttpRequest(const std::string& req)
 {
     ssize_t pos = 0, lpos = 0;
     string line = Utils::GetLine(req, pos);
-    cout << "request " << line << endl;
+    //cout << "request " << line << endl;
 
     method = Utils::Tokenize(line, lpos, " ");
     uri = Utils::Tokenize(line, lpos, " ");
+    auto stop = uri.find_first_of("?#");
+    if(stop != string::npos)
+        uri.resize(stop);
+    RemoveEscape(uri);
     version = Utils::Tokenize(line, lpos, " ");
     if(method == "PUT")
         e_method = Method ::PUT;

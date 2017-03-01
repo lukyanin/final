@@ -41,9 +41,9 @@ int main(int argc, char * const argv[]) {
         cerr << "usage: /home/box/final/final -h <ip> -p <port> -d <directory>" << endl;
         exit(1);
     }
-    cout << "ip: " << ip << endl;
-    cout << "port: " << port << endl;
-    cout << "dir: " << dir << endl;
+    //cout << "ip: " << ip << endl;
+    //cout << "port: " << port << endl;
+    //cout << "dir: " << dir << endl;
 
     // make daemon
     pid_t pid = fork();
@@ -57,9 +57,9 @@ int main(int argc, char * const argv[]) {
 
     chdir("/");
     setsid(); // create new session
-    //close(STDIN_FILENO);
-    //close(STDOUT_FILENO);
-    //close(STDERR_FILENO);
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
 
     WebServer server;
 //    server.PrintFile("/home/lvv/c++course/final/index.htm");
